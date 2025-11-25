@@ -242,7 +242,7 @@ Our Hidden Markov Model for keystroke authentication relies on the following ass
     $$P(\mathbf{s}, \mathbf{o}) = P(S_1) \prod_{t=1}^{T-1} P(S_{t+1} \mid S_t) \prod_{t=1}^{T} P(O_t \mid S_t)$$
     $$= \pi_{s_1} \prod_{t=1}^{T-1} a_{s_t, s_{t+1}} \prod_{t=1}^{T} b_{s_t, o_t}$$
     This factorization allows for efficient inference via the forward-backward algorithm and learning via EM.
-    
+
 \end{itemize}
 
 These assumptions relate to our dataset because keystroke dynamics naturally exhibit sequential structure with short-term temporal dependencies. 
@@ -289,11 +289,32 @@ We analyze the computational complexity of inference as \dots
 % - Describe evaluation metrics (likelihood, accuracy, F1, expected return, etc.).
 % - Describe baselines or alternative configurations.
 % - Mention how you chose hyperparameters.
+
+\textbf{Dataset:} We use the CMU Keystroke Dynamics Benchmark Dataset~\cite{killourhy2009comparing}, specifically 
+the \texttt{DSL-StrongPasswordData.csv} subset. Each user has around 400 repetitions of the password \texttt{.tie5Roanl}, 
+which we have broken up into 80\% training, 10\% validation, and 10\% test data. This per-repetition split ensures that our 
+model is evaluated on unseen typing samples, which mimics real-world authentication scenarios where new keystroke sequences must be classified.
+
 We evaluate our model using:
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Metrics}: [Log-likelihood, accuracy, RMSE, expected return, etc.]
-    \item \textbf{Baselines / Comparisons}: [Simpler models, heuristic methods, etc.]
-    \item \textbf{Implementation details}: [Key hyperparameters, number of iterations, random seeds.]
+    \item \textbf{Metrics}: We use per-repetition identification accuracy as our main evaluation metric:
+    $$\text{Accuracy} = \frac{\text{\# correctly identified repetitions}}{\text{\# total test repetitions}}$$
+    For a given test sequence $\mathbf{o}^{(r)}$ with true user label $u^*$, we compute:
+    $$\hat{u} = \arg\max_{u \in \mathcal{U}} \log P(\mathbf{o}^{(r)} \mid \theta^{(u)})$$
+    The prediction is correct if $\hat{u} = u^*$. We report overall accuracy averaged across all users. We also examine log-likelihood values 
+    during training to verify model convergence.
+    
+    \item \textbf{Baselines / Comparisons}: We compare our HMM approach against a random guess baseline, which uniformly selects among 
+    $|\mathcal{U}|$ users with expected accuracy $\frac{1}{|\mathcal{U}|}$. We also compare different HMM configurations by varying the 
+    number of hidden states and discretization bins.
+    
+    \item \textbf{Implementation details}: We use quantile-based binning with $m = 10$ bins to convert continuous timing features into 
+    discrete observation symbols, for balanced bin populations. We experiment with $n \in \{3, 5, 7, 10\}$ hidden states, 
+    where each state represents a latent typing mode (e.g., fast flow, normal pace, hesitation). Training uses the EM algorithm 
+    from \texttt{hmmlearn.MultinomialHMM} with maximum iterations of 20, convergence tolerance of $10^{-3}$, and fixed random seeds 
+    for reproducibility. We train one separate HMM per user, which results in $|\mathcal{U}|$ independent models with parameters 
+    $\theta^{(u)} = (\pi^{(u)}, A^{(u)}, B^{(u)})$. We conduct experiments with $|\mathcal{U}| \in \{2, 5, 10, 20, 30\}$ users to 
+    analyze scalability. 
 \end{itemize}
 
 \subsection{Quantitative Results}
