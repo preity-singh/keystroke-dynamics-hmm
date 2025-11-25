@@ -220,13 +220,35 @@ The joint distribution factorizes as:
 \subsection{Model Assumptions and Dependencies}
 % - List key probabilistic assumptions (conditional independence, Markov, stationarity, etc.).
 % - Connect to the data: why reasonable? where might they fail?
-Our model relies on the following assumptions:
+Our Hidden Markov Model for keystroke authentication relies on the following assumptions:
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Assumption 1}: \dots
-    \item \textbf{Assumption 2}: \dots
-    \item \textbf{Conditional independence}: [Describe conditional independencies or Markov assumptions.]
+    \item \textbf{Assumption 1 (Markov Property)}: The hidden state at time $t$ depends only on the hidden state at time $t-1$:
+    $$P(S_t \mid S_{1:t-1}) = P(S_t \mid S_{t-1})$$
+    \textit{Justification for keystroke data:} A user's current typing mode depends mostly on their most recent typing mode, not the entire history.
+    
+    \item \textbf{Assumption 2 (Conditional Independence of Observations)}: The observation at time $t$ depends only on the current hidden state:
+    $$P(O_t \mid S_{1:T}, O_{1:t-1}) = P(O_t \mid S_t)$$
+    \textit{Justification for keystroke data:} Given the user's current typing mode (the hidden state), the timing features 
+    for the current keystroke are independent of past observations. The hidden state captures all relevant information 
+    about the user's typing behavior at that moment.
+    
+    \item \textbf{Assumption 3 (Stationarity)}: The transition probabilities $A$ and emission probabilities $B$ remain constant throughout the sequence:
+    $$P(S_t = j \mid S_{t-1} = i) = a_{ij} \text{ for all } t$$
+    $$P(O_t = k \mid S_t = i) = b_{ik} \text{ for all } t$$
+    \textit{Justification for keystroke data:} For a short password sequence, we assume the user's typing behavior is relatively stable. 
+    For longer sequences, this assumption may need relaxation.
+    
+    \item \textbf{Conditional Independence Structure}: Under these assumptions, the joint distribution factorizes as:
+    $$P(\mathbf{s}, \mathbf{o}) = P(S_1) \prod_{t=1}^{T-1} P(S_{t+1} \mid S_t) \prod_{t=1}^{T} P(O_t \mid S_t)$$
+    $$= \pi_{s_1} \prod_{t=1}^{T-1} a_{s_t, s_{t+1}} \prod_{t=1}^{T} b_{s_t, o_t}$$
+    This factorization allows for efficient inference via the forward-backward algorithm and learning via EM.
+    
 \end{itemize}
-These assumptions relate to our dataset because \dots
+
+These assumptions relate to our dataset because keystroke dynamics naturally exhibit sequential structure with short-term temporal dependencies. 
+The Markov assumption is reasonable for password-length sequences where typing modes change gradually. Conditional independence holds when the 
+hidden state adequately captures the user's current typing behavior. The stationarity assumption may fail for very long typing sessions where 
+fatigue or distraction could systematically alter transition and emission patterns, but is well-suited to our short password sequences.
 
 \subsection{Learning / Parameter Estimation}
 % - Which algorithm(s) do you use: MLE, EM, Gibbs sampling, variational inference, etc.?
