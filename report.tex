@@ -2,7 +2,9 @@
 
 % Use neurips 2024 style; for a class project, preprint (non-anonymous) is usually best.
 % Options: [final], [preprint], [nonatbib]
-\usepackage[preprint]{neurips_2024} % Change to [] if your instructor wants anonymous formatting.
+\PassOptionsToPackage{numbers,sort&compress}{natbib}
+
+\usepackage[final]{neurips_2024} % Change to [] if your instructor wants anonymous formatting.
 
 % Recommended packages (all compatible with neurips_2024)
 \usepackage[utf8]{inputenc} % allow utf-8 input
@@ -18,8 +20,6 @@
 \usepackage{subcaption}     % subfigures if needed
 \usepackage{enumitem}       % better control of itemize/enumerate
 
-% If you want natbib options (author-year, etc.), uncomment:
-% \PassOptionsToPackage{numbers,sort&compress}{natbib}
 
 % For referencing equations, figs, etc. in a consistent way
 \newcommand{\E}{\mathbb{E}}
@@ -37,12 +37,12 @@
   Ryan Lindberg \\
   Halıcıoğlu Data Science Institute\\
   University of California, San Diego\\
-  \texttt{ }
+  \texttt{rylindberg@ucsd.edu}
   \And
   Tanner Berman \\
   Department of Computer Science and Engineering\\
   University of California, San Diego\\
-  \texttt{}
+  \texttt{tberman@ucsd.edu}
   \And
   Anthony Velikov \\
   Department of Computer Science and Engineering\\
@@ -52,12 +52,12 @@
   Audrey Meredith \\
   Halıcıoğlu Data Science Institute\\
   University of California, San Diego\\
-  \texttt{}
+  \texttt{ameredith@ucsd.edu}
   \And
   Preity Singh \\
   Department of Computer Science and Engineering\\
   University of California, San Diego\\
-  \texttt{}
+  \texttt{prs009@ucsd.edu}
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -68,7 +68,9 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{abstract}
-Traditional authentication methods typically verify a user only at the time of the login by checking a password once and then granting access indefinitely. In this project, we study continuous authentication based on keystroke dynamics: timing patterns and inter-key latencies that are characteristic of an individual typist. Using a public keystroke dynamics benchmark dataset, we construct sequences of keystroke timing features and model them with Hidden Markov Models. Our Hidden Markov Models aim to capture latent typing modes and temporal structure in a user's keystrokes while handling noisy, variable-length sequences. We train the models via Expectation--Maximization and evaluate whether they can distinguish authorized users from others based on the likelihood of observed keystroke sequences. Our results will explore the feasibility of keystroke based continuous authentication and more broadly illustrate how probabilistic sequence models can be applied to computer interaction data.
+Traditional authentication methods typically verify a user only once at login by checking whether the submitted password string matches the stored credential. In this project we ask whether we can add a \emph{behavioral} layer of security at that same moment: given that the correct password text was entered, do the \emph{keystroke timings} for that password look like they were produced by the claimed user or someone else? Using a public keystroke dynamics benchmark dataset, we construct sequences of timing features for a fixed strong password (\texttt{.tie5Roanl}) and model each user with a discrete Hidden Markov Model (HMM). The HMM is trained with Expectation Maximization to capture user specific typing modes and temporal structure in their keystrokes. We treat keystroke based identification as a classification problem: for each password typing sequence we compute its log likelihood under every user's HMM and assign it to the most likely user. Our results show that this method works but remains limited compared to standard classification models.
+
+
 \end{abstract}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -77,145 +79,107 @@ Traditional authentication methods typically verify a user only at the time of t
 
 \subsection{Motivation and Problem Statement}
 
-Conventional authentication schemes typically verify a user only at a single point in time for the login event. Once the user is authenticated, the system usually assumes that the same person remains in control of the machine. This assumption can fail in many scenarios, such as when a logged-in machine is left unattended, credentials are shared, or malware takes over a session. As a result, one off authentication does not protect against many forms of insider threat or post-login account compromise.
-
-We address the following problem: \emph{Can we verify that the person currently using a machine is an authorized user based on their keystroke dynamics?} Specifically, we want to monitor how a user types including timing patterns, inter key latencies, and small bursts or corrections and determine whether these observed keystrokes are consistent with the typing signature of a known, authorized user.
-
-The task can be viewed as a sequence-based verification problem:
-\begin{itemize}[leftmargin=*]
-    \item The input is a sequence of keystroke events, such as key-press and key-release times for a password, phrase, or longer free-text segment.
-    \item The output is a decision about whether the sequence was generated by the claimed (authorized) user or by an impostor.
-\end{itemize}
-Rather than replacing traditional authentication, this behavioral signal is intended to \emph{complement} it by providing continuous, non-intrusive checks during a session.
-
-This problem is important for:
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Reducing insider risk:} Detecting anomalous typing behavior after login can help identify misuse of an already logged in account.
-    \item \textbf{Detecting malicious activity:} If an attacker takes control of a session, their typing dynamics may differ from the legitimate user's.
-    \item \textbf{Proctoring and monitoring:} In remote testing or secure environments, continuous behavioral checks can help confirm the intended user is present.
-\end{itemize}
-
-Our project focuses on a probabilistic modeling approach to this problem using Hidden Markov Models (HMMs), which are well-suited to temporal sequence data such as keystrokes.
+The traditional authentication approach verifies a user by checking if they entered the correct password but this has a critical problem: if someone steals or guesses the password, they gain full access. 
+For our project, we address this problem by asking: Can we add an extra layer of verification when someone is entering their password by analyzing their keystroke dynamics? We monitor how a user types (timing patterns, inter-key latencies) and determine whether these observed keystrokes are consistent with the typing signature of the authorized user. The input is a sequence of keystroke events, and the output is a decision about whether those keystrokes are more consistent with the claimed user or with someone else. Our HMM could be used to identify if the user suddenly switches, for example, if the user switches from User A to User B the system can lock the screen. This is a good way of passive monitoring and supports applications like automatic profile switching. Although we focus on a single fixed password in this project, we treat it as a proof of concept for a more general question: can we reliably identify users from their broader typing patterns, not just from one memorized string? If keystroke dynamics for a single password already carry enough signal to distinguish users, that suggests richer, free text typing behavior could support even stronger behavioral biometrics.
 
 \subsection{Relevance to Probabilistic Reasoning and Learning}
 
-Keystroke dynamics are inherently sequential. When a user types, we observe a sequence of key events over time. These events exhibit patterns:
-\begin{itemize}[leftmargin=*]
-    \item Certain key pairs or n-grams (e.g., th, ing) tend to have characteristic timing and latency.
-    \item Users often shift between different modes of typing: steady flow, fast bursts, hesitations, or error corrections.
-    \item Even for the same user and phrase, timing is not deterministic; noise, fatigue, and context lead to variability.
-\end{itemize}
-
-A probabilistic model is natural here because it:
-\begin{itemize}[leftmargin=*]
-    \item Represents uncertainty in timing and user behavior via random variables.
-    \item Allows us to model latent structure, such as unobserved typing modes or states.
-    \item Provides principled ways to compute likelihoods, posterior probabilities, and decision rules 
-\end{itemize}
-
-Hidden Markov Models in particular are a good fit because:
-\begin{itemize}[leftmargin=*]
-    \item They model sequences $X_{1:T}$ of observations with an underlying sequence of latent states $Z_{1:T}$.
-    \item The Markov structure captures how users transition between different internal states over time.
-    \item HMMs handle \emph{variable-length} sequences and can work directly in the time domain via emission distributions over timing features.
-    \item Standard probabilistic algorithms (forward backward, Viterbi, EM) provide efficient learning and inference for such models.
-\end{itemize}
-
-Thus, this project is directly grounded in probabilistic reasoning and learning: we specify a generative model $p(X_{1:T}, Z_{1:T})$ for keystroke sequences, learn its parameters via maximum likelihood using EM, and use probabilistic inference to perform user verification.
+Keystroke dynamics are inherently sequential: when a user types, we observe a sequence of key events over time that exhibit patterns. Certain key pairs tend to have characteristic timing, users shift between different modes of typing (steady flow, fast bursts, hesitations, or error corrections), and even for the same user and phrase, timing is not deterministic.
+A probabilistic model is natural because it represents uncertainty in timing via random variables, models latent structures such as unobserved typing modes, and provides principled ways to compute likelihoods and decision rules. Hidden Markov Models are particularly well suited because they model sequences $O_{1:T}$ of observations with an underlying sequence of latent states $S_{1:T}$, the Markov structure captures how users transition between different internal states over time, and the EM algorithm provides the learning and inference.
 
 \subsection{Project Scope and Goals}
 % - What are your concrete goals?
 % - What is in scope vs. out of scope?
 % - Any hypotheses you will test?
-Our concrete goals are:
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Goal 1:} Implement a data-processing pipeline that converts raw keystroke logs into discrete observation sequences suitable for Hidden Markov Models, including global quantile based discretizations and per-user sequence construction.
-    \item \textbf{Goal 2:} Train one discrete HMM per user and evaluate per-repetition identification accuracy, i.e., how often we can correctly identify the user who typed a given password repetition.
-    \item \textbf{Goal 3:} Explore how modeling choices (e.g., number of hidden states, number of discretizations bins, number of users) affect performance, and qualitatively interpret hidden states as user-specific typing modes.
-\end{itemize}
 
-We hypothesize that:
-\begin{itemize}[leftmargin=*]
-    \item A properly trained HMM will achieve substantially higher per-repetition identification accuracy than a random-guess baseline ($1 / |\mathcal{U}|$) or a simple global timing baseline that ignores temporal structure.
-    \item Hidden states will correspond to interpretable typing regimes (e.g., faster vs.\ slower segments, more vs.\ less overlapping key presses).
-\end{itemize}
+\textbf{Goal 1:} implement a data-processing pipeline that converts raw keystroke logs into discrete observation sequences suitable for HMMs.
+
+\textbf{Goal 2:} train one discrete HMM per user and evaluate per repetition identification accuracy, i.e, how often we can
+correctly identify the user who typed a given password repetition.
+
+\textbf{Goal 3:} explore how modeling choices (e.g., number of hidden states, number of discretization bins, number of users) effect performance.
+
+We hypothesize that a properly tuned user-specific HMM will achieve substantially higher
+per-repetition identification accuracy than random guessing, and that its performance will
+be sensitive to model capacity (number of hidden states and timing bins).
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Data Sourcing and Processing}
 \label{sec:data}
 
 \subsection{Data Sources}
-We use a public
-\href{https://www.kaggle.com/datasets/carnegiecylab/keystroke-dynamics-benchmark-data-set}
-{keystroke dynamics benchmark dataset released by Carnegie Mellon University CyLab}
-available on Kaggle as the
-\emph{Keystroke Dynamics Benchmark Data Set}.
-In particular, we work with the \texttt{DSL-StrongPasswordData.csv} subset.
+We use a public keystroke dynamics benchmark dataset released by Carnegie Mellon University CyLab, originally introduced by Killourhy and Maxion \citep{killourhy2009comparing} and distributed as the \emph{Keystroke Dynamics Benchmark Data Set} \citep{keystroke_benchmark_dataset}. We work with the \texttt{DSL-StrongPasswordData.csv} subset.
 
-Each row in this dataset corresponds to one repetition of the same strong password (commonly reported as \texttt{.tie5Roanl}) typed by a human subject. The file contains:
-\begin{itemize}[leftmargin=*]
-    \item Around 50 subjects (e.g., IDs \texttt{s002}, \texttt{s018}, \dots).
-    \item Up to 8 sessions per subject.
-    \item Up to 50 repetitions of the password per session (roughly 400 repetitions per subject in total).
-\end{itemize}
+Each row in this dataset corresponds to one repetition of the same strong password (commonly reported as \texttt{.tie5Roanl}) typed by a human subject. The file contains around 50 subjects, up to 8 sessions per subject, and up to 50 repetitions of the password per session ( 400 repetitions per subject in total). 
 
-For each repetition, the dataset records:
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Metadata:}
-    \begin{itemize}[leftmargin=1.5em]
-        \item \texttt{subject} (unique subject ID, e.g., \texttt{s002}).
-        \item \texttt{sessionIndex} (integer: session number).
-        \item \texttt{rep} (integer: repetition index within the session).
-    \end{itemize}
-    \item \textbf{Per-key hold times} (\texttt{H.*} columns): key down to key up durations for each key in the password and the final Return key.
-    \item \textbf{Keydown--keydown latencies} (\texttt{DD.*.*} columns): elapsed time from keydown of key1 to keydown of key2.
-    \item \textbf{Keyup--keydown latencies} (\texttt{UD.*.*} columns): elapsed time from keyup of key1 to keydown of key2; these values can be negative if key2 is pressed before key1 is released.
-\end{itemize}
+For each repetition, the dataset records \textbf{metadata} (\texttt{subject}, a unique subject ID such as \texttt{s002}; \texttt{sessionIndex}, an integer session number; and \texttt{rep}, an integer repetition index within the session), \textbf{per-key hold times} (\texttt{H.*} columns:
+key down to key up durations for each key in the password and the final Return key),
+\textbf{keydown--keydown latencies} (\texttt{DD.*.*} columns: elapsed time from keydown of key1 to keydown of key2), and \textbf{keyup--keydown latencies} (\texttt{UD.*.*} columns: elapsed time from keyup of key1 to keydown of key2; these values can be negative if key2 is pressed before key1 is released).
 
+This dataset is well-suited to our problem because it provides many repetitions per user across multiple sessions, allowing us to study how stable keystroke patterns are over time. However, it also has important limitations: it focuses on a single memorized password typed in controlled conditions, so it may overestimate performance relative to real-world, noisy environments with free-text input and heterogeneous devices.
 
 
 \subsection{Preprocessing and Feature Engineering}
-% - Handling missing data (imputation, dropping, indicator variables).
-% - Discretization / binning if you need discrete variables for BN/HMM.
-% - Feature selection or dimensionality reduction.
-% - Any normalization / scaling for continuous variables.
-We perform the following preprocessing steps:
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Cleaning}: No cleaning was necessary.
-    \item \textbf{Encoding}: We discretized the keystroke timings into categorical bins, followed by a one hot encoding of these bins. 
-    \item \textbf{Feature selection}: We used all features present in the dataset besides session and repetition indeces.
-    \item \textbf{Train/validation/test splits}: We used a split ratio of 80/10/10
-\end{itemize}
+To \textbf{encode} the data we discretized the keystroke timings into categorical bins, followed by a one-hot
+encoding of these bins. We chose to use all 31 \textbf{features} present
+besides session and repetition indices and chose a \textbf{80/10/10} ratio for the train/validation/test split. No data cleaning was necessary,
 
-\subsection{Justification of Processing Choices}
-% - Why are these steps important for your probabilistic model?
-% - For example: discrete states required, sparsity reduction, stability of EM, etc.
-
-These processing choices are directly driven by the requirements and assumptions of our discrete HMM. The raw keystroke data are continuous floating point timing values, but the HMM we use assumes that each observation $O_t$ is a discrete symbol drawn from a categorical distribution $P(O_t = k \mid S_t = i) = b_{ik}$. To make the data compatible with this emission model, we map each continuous timing value $x_t \in \mathbb{R}_+$ into a bin index $o_t \in {0,\dots,m-1}$ via global quantile-based binning. This produces a sequence of discrete symbols for each password repetition, which can then be modeled as emissions from the hidden typing modes $S_t$.
-
-Finally, the one-hot encoding used in the implementation is purely a technical device to match the new \texttt{MultinomialHMM} API, which expects count vectors. This representation preserves all the information in the discretized timings while giving us a likelihood function that is well behaved for EM and exactly matches the discrete HMM formulation we use in our analysis.
-
+These processing choices are driven by the requirements of a discrete HMM. The raw keystroke data are
+continuous floating point timing values, but the HMM we use assumes that each observation $O_t$ is a
+discrete symbol drawn from a categorical distribution. To make the data compatible with this emission
+model, we map each continuous timing value $x_t$ into a bin index $o_t \in \{0,\dots,m-1\}$ with global
+quantile-based binning. The one-hot encoding used in our implementation is purely meant to make the
+\texttt{MultinomialHMM} API happy, because it expects count vectors rather than single digits.
+This representation preserves all the information in the discretized timings and exactly matches the
+discrete HMM formulation we use in our analysis.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Modeling and Inference}
-\label{sec:model}
-
 \subsection{Probabilistic Model Specification}
-% - State the type of model: BN, HMM, MDP, etc.
-% - Define observed variables, latent variables, and their domains.
-% - Describe the structure (graph, transition matrix, etc.).
-We model the problem using a \textbf{[Bayesian Network / HMM / MDP / other]}.
-Let
+We model keystroke dynamics for each user with a discrete Hidden Markov Model using the \texttt{MultinomialHMM} class from the
+\texttt{hmmlearn} python library \citep{hmmlearn}. For a single password repetition of length $T$, we observe a sequence of discretized timing features
+\[
+O_{1:T} = (O_1,\dots,O_T), \quad O_t \in \{0,\dots,m-1\}, 
+\]
+where $m$ is the number of quantile timing bins we split the data into. \newline\\
+Then we assume a corresponding sequence of latent ``typing modes'', represented by hidden typing states $S_{1:T}$ (e.g., ``fast'', ``slow'', ``hesitating'').
+
+\[
+S_{1:T} = (S_1,\dots,S_T), \quad S_t \in \{1,\dots,n\}.
+\]
+The HMM is parameterized by:
 \begin{itemize}[leftmargin=*]
-    \item $X_{1:T}$ denote the observed variables (e.g., features, emissions),
-    \item $Z_{1:T}$ denote latent variables (e.g., hidden states),
-    \item $Y$ denote labels / returns / decisions, if applicable.
+    \item The initial state distribution
+    \[
+        \boldsymbol{\pi} = (\pi_1,\dots,\pi_n), \quad \pi_i = P(S_1 = i).
+    \]
+    \item The transition matrix
+    \[
+        A = [a_{ij}]_{i,j=1}^n, \quad a_{ij} = P(S_{t+1} = j \mid S_t = i),
+    \]
+    which encodes how the typing mode evolves over time.
+    \item The emission matrix
+    \[
+        B = [b_{ik}]_{\substack{i=1,\dots,n \\ k=0,\dots,m-1}}, \quad b_{ik} = P(O_t = k \mid S_t = i),
+    \]
+    where each row $B_{i,:}$ is a categorical distribution over the $m$ timing bins given hidden state $i$.
 \end{itemize}
-The joint distribution factorizes as:
-\begin{equation}
-    p(X_{1:T}, Z_{1:T}, Y) = \dots
-\end{equation}
-% Fill in your concrete factorization for your chosen model.
+
+(see Appendix~\ref{app:inference-details}, ~\ref{app:em-details} 
+for the full EM derivation).
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.7\linewidth]{hmm_fig.pdf}
+    \caption{Graphical representation of our user-specific Hidden Markov Model.
+    Hidden typing modes $S_t$ form a first-order Markov chain, and each observed
+    timing feature $O_t$ is conditionally independent given $S_t$.}
+    \label{fig:hmm-graphical}
+\end{figure}
+
+
 
 \subsection{Model Assumptions and Dependencies}
 % - List key probabilistic assumptions (conditional independence, Markov, stationarity, etc.).
@@ -242,7 +206,7 @@ Our Hidden Markov Model for keystroke authentication relies on the following ass
     $$P(\mathbf{s}, \mathbf{o}) = P(S_1) \prod_{t=1}^{T-1} P(S_{t+1} \mid S_t) \prod_{t=1}^{T} P(O_t \mid S_t)$$
     $$= \pi_{s_1} \prod_{t=1}^{T-1} a_{s_t, s_{t+1}} \prod_{t=1}^{T} b_{s_t, o_t}$$
     This factorization allows for efficient inference via the forward-backward algorithm and learning via EM.
-
+    
 \end{itemize}
 
 These assumptions relate to our dataset because keystroke dynamics naturally exhibit sequential structure with short-term temporal dependencies. 
@@ -251,122 +215,151 @@ hidden state adequately captures the user's current typing behavior. The station
 fatigue or distraction could systematically alter transition and emission patterns, but is well-suited to our short password sequences.
 
 \subsection{Learning / Parameter Estimation}
-% - Which algorithm(s) do you use: MLE, EM, Gibbs sampling, variational inference, etc.?
-% - What parameters are being learned? Give notation.
-% - Describe the optimization or iterative update equations at a high level.
-To estimate parameters $\theta$, we use \textbf{[Exact MLE / EM / Gibbs sampling / Policy iteration / etc.]}. 
-At a high level, our learning procedure is:
-\begin{enumerate}[leftmargin=*]
-    \item Initialize parameters $\theta^{(0)}$ (and latent assignments if needed).
-    \item For $k = 1, 2, \dots, K$:
-    \begin{itemize}
-        \item \textbf{E-step / Sampling / Policy evaluation}: \dots
-        \item \textbf{M-step / Parameter update / Policy improvement}: \dots
-    \end{itemize}
-\end{enumerate}
-% You can add a concise derivation or reference to a standard algorithm here.
+
+We train each user's HMM with the standard Baum Welch EM algorithm, maximizing
+the total log-likelihood of that user's discretized keystroke sequences. In the
+E-step we run the forward-backward algorithm to obtain posterior state and
+transition probabilities for each time step, and in the M-step we renormalize
+these expected counts to update the initial distribution $\boldsymbol{\pi}$,
+transition matrix $A$, and emission matrix $B$. Full derivations and explicit
+update equations are given in Appendix~\ref{app:em-details}.
+
+
 
 \subsection{Inference Algorithms}
-% - Describe how you perform inference at test time.
-%   e.g., forward-backward, Viterbi, variable elimination, belief propagation, value iteration, etc.
-% - What are you computing: marginals, MAP, expected return, etc.?
-For inference on new data, we compute:
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Predictive distribution} $p(Y \mid X_{1:T})$ using \dots
-    \item \textbf{Latent state posteriors} $p(Z_t \mid X_{1:T})$ via [forward-backward / message passing / etc.].
-    \item \textbf{MAP sequence} $\arg\max_{Z_{1:T}} p(Z_{1:T} \mid X_{1:T})$ via [Viterbi], if applicable.
-\end{itemize}
-We analyze the computational complexity of inference as \dots
 
+After training, each user $u$ has an HMM
+\[
+\theta^{(u)} = (\boldsymbol{\pi}^{(u)}, A^{(u)}, B^{(u)}).
+\]
+Given a new keystroke sequence $\mathbf{o}$ from a single password repetition, we perform inference by
+computing its log-likelihood under each user model using the forward algorithm:
+\[
+\ell^{(u)} = \log P(\mathbf{o} \mid \theta^{(u)}).
+\]
+
+Assuming a uniform prior over users, the MAP estimate of the identity is
+\[
+\hat{u} = \arg\max_{u \in \mathcal{U}} \ell^{(u)}.
+\]
+
+Thus inference consists of evaluating the forward likelihood under each user’s HMM and selecting the
+user with the highest log-likelihood. This is exactly the procedure we implement in our evaluation code.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Results and Discussion}
 \label{sec:results}
 
-% This section should showcase both quantitative and qualitative results,
-% and discuss hyperparameters, configurations, and stability.
+\subsection{Overall Identification Performance}
 
-\subsection{Experimental Setup}
-% - Describe evaluation metrics (likelihood, accuracy, F1, expected return, etc.).
-% - Describe baselines or alternative configurations.
-% - Mention how you chose hyperparameters.
+We first tuned the HMM on the validation set by sweeping over the number of
+hidden states $K \in \{2,3,4,5\}$ and the number of timing bins 
+$m \in \{10,15,20\}$. Very small models ($K=2$ or $m=10$) underfit and achieved
+substantially worse validation accuracy, while larger models ($K=5$ or
+$m=20$ with more states) became numerically unstable and showed highly variable
+performance across random restarts. The best trade-off on validation was
+obtained with $K=4$ hidden states and $m=20$ timing bins, which we use for all
+reported test results.
 
-\textbf{Dataset:} We use the CMU Keystroke Dynamics Benchmark Dataset~\cite{killourhy2009comparing}, specifically 
-the \texttt{DSL-StrongPasswordData.csv} subset. Each user has around 400 repetitions of the password \texttt{.tie5Roanl}, 
-which we have broken up into 80\% training, 10\% validation, and 10\% test data. This per-repetition split ensures that our 
-model is evaluated on unseen typing samples, which mimics real-world authentication scenarios where new keystroke sequences must be classified.
+Table~\ref{tab:main_results} summarizes the closed-set identification accuracy
+on the 51-user test set. A random guess baseline, which picks a user uniformly
+at random, achieves about $1/51 \approx 1.96\%$ accuracy. Our discrete HMM
+achieves \textbf{57.6\%} per-repetition identification accuracy, meaning that
+for a little more than half of the password repetitions the correct user's
+model assigns the highest likelihood among all 51 users.
 
-We evaluate our model using:
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Metrics}: We use per-repetition identification accuracy as our main evaluation metric:
-    $$\text{Accuracy} = \frac{\text{\# correctly identified repetitions}}{\text{\# total test repetitions}}$$
-    For a given test sequence $\mathbf{o}^{(r)}$ with true user label $u^*$, we compute:
-    $$\hat{u} = \arg\max_{u \in \mathcal{U}} \log P(\mathbf{o}^{(r)} \mid \theta^{(u)})$$
-    The prediction is correct if $\hat{u} = u^*$. We report overall accuracy averaged across all users. We also examine log-likelihood values 
-    during training to verify model convergence.
-    
-    \item \textbf{Baselines / Comparisons}: We compare our HMM approach against a random guess baseline, which uniformly selects among 
-    $|\mathcal{U}|$ users with expected accuracy $\frac{1}{|\mathcal{U}|}$. We also compare different HMM configurations by varying the 
-    number of hidden states and discretization bins.
-    
-    \item \textbf{Implementation details}: We use quantile-based binning with $m = 10$ bins to convert continuous timing features into 
-    discrete observation symbols, for balanced bin populations. We experiment with $n \in \{3, 5, 7, 10\}$ hidden states, 
-    where each state represents a latent typing mode (e.g., fast flow, normal pace, hesitation). Training uses the EM algorithm 
-    from \texttt{hmmlearn.MultinomialHMM} with maximum iterations of 20, convergence tolerance of $10^{-3}$, and fixed random seeds 
-    for reproducibility. We train one separate HMM per user, which results in $|\mathcal{U}|$ independent models with parameters 
-    $\theta^{(u)} = (\pi^{(u)}, A^{(u)}, B^{(u)})$. We conduct experiments with $|\mathcal{U}| \in \{2, 5, 10, 20, 30\}$ users to 
-    analyze scalability. 
-\end{itemize}
-
-\subsection{Quantitative Results}
-% - Tables and figures with main numbers.
-% - Compare multiple configurations (hyperparameters, hidden states, structures).
-% - Highlight key trends.
-Table~\ref{tab:main_results} summarizes the main quantitative results.
-
-\begin{table}[t]
+\begin{table}[h]
     \centering
-    \caption{Main quantitative results comparing different model configurations.}
+    \caption{Identification accuracy on the 51-user test set.}
+    \vspace{0.2em}
     \label{tab:main_results}
-    \begin{tabular}{lccc}
+    \begin{tabular}{lcc}
         \toprule
-        Configuration & Metric 1 & Metric 2 & Metric 3 \\
+        Task Type & Metric & Result \\
         \midrule
-        Baseline A    &  \dots   &  \dots   &  \dots   \\
-        Model B       &  \dots   &  \dots   &  \dots   \\
-        Model C       &  \dots   &  \dots   &  \dots   \\
+        \textbf{Identification} (Random Baseline) & Accuracy & $\approx 1.96\%$ \\
+        \textbf{Identification} (Discrete HMM)     & Accuracy & \textbf{57.6\%} \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-\subsection{Qualitative Analysis}
-% - What aspects of the data does the model capture or miss?
-% - Do learned CPTs / state interpretations / policies align with intuition?
-% - Show a few illustrative plots or sequences.
-We qualitatively inspect the learned model by:
-\begin{itemize}[leftmargin=*]
-    \item Visualizing learned parameters (e.g., transition matrices, CPTs).
-    \item Examining example sequences / trajectories and the corresponding latent states.
-\end{itemize}
-We observe that \dots
+To understand how this scales with the number of users, we also ran the same
+pipeline on a subset of $5$ users. In that setting the HMM achieves
+around \textbf{75\%} accuracy. The drop from $75\%$ (5 users) to $57.6\%$
+(51 users) is consistent with the intuition that as we add more users, their
+typing patterns overlap more and the identification problem becomes harder.
 
-\subsection{Effect of Model Choices and Hyperparameters}
-% - Discuss how varying hidden state count, network structure, regularization, etc. changed results.
-% - Comment on stability and convergence of training.
-We systematically vary \dots and observe that:
-\begin{itemize}[leftmargin=*]
-    \item Increasing \dots leads to \dots
-    \item Overly large \dots cause \dots (overfitting/instability/etc.).
-\end{itemize}
+\subsection{Decision Confidence via Log-Likelihood Margins}
+
+Accuracy alone does not reveal how confidently the HMM separates genuine users
+from impostors. For each test repetition, we therefore computed the
+\emph{log-likelihood margin} between the true user's model and the most
+competitive impostor model,
+\[
+\text{margin} = \log p(\mathbf{o} \mid \theta^{(\text{true})})
+              - \max_{u \neq \text{true}} \log p(\mathbf{o} \mid \theta^{(u)}).
+\]
+Positive margins correspond to correct identifications; negative margins
+correspond to misclassifications.
+
+Figure~\ref{fig:loglik-margins} shows the distribution of these margins across
+the 51-user test set. Most mass lies close to zero, with relatively few
+repetitions in the strongly positive or strongly negative tails. This indicates
+that in many cases the true user's HMM is only slightly more likely than the
+best impostor model, which explains why overall accuracy is moderate rather
+than high. In other words, the model often finds multiple users whose typing
+patterns explain a given repetition almost equally well, so small fluctuations
+in the learned parameters can flip the decision. For deployment as a security
+mechanism, this suggests that the HMM would need to be combined with other
+signals or used as a soft score rather than a hard one-of-$N$ classifier.
+
+\subsection{Qualitative Behavior of the Learned HMMs}
+
+Qualitatively, the learned HMMs capture broad aspects of a user's typing
+rhythm: transitions between hidden states tend to align with faster and slower
+segments of the password, and certain states are associated with consistently
+longer or shorter inter-key timings. This matches the intuition that people
+exhibit stable micro-patterns in how they speed up, slow down, or hesitate
+while typing.
+
+At the same time, the model struggles to represent finer-grained structure.
+Each password repetition contains only 31 events, and timing values vary
+substantially across repetitions even for the same user. After discretization
+into 20 bins, many subtle differences collapse into the same bin, causing the
+emission distributions to blur together timing patterns that might otherwise be
+discriminative. As a result, the latent states do not map cleanly onto
+interpretable behaviors such as ``hesitation at the dot'' or ``fast typing
+through the middle of the password''; instead, they behave more like coarse
+clusters over noisy timing features.
 
 \subsection{Convergence, Scalability, and Data Requirements}
-% - Did EM/Gibbs converge reliably? Any pathologies?
-% - How does runtime scale with T, number of states, dataset size?
-% - Would more data help? At what computational cost?
-Training generally converges in \dots iterations. We find that:
-\begin{itemize}[leftmargin=*]
-    \item Runtime scales approximately as \dots
-    \item With more data, performance \dots but training cost increases \dots
-\end{itemize}
+
+From an optimization standpoint, Baum Welch EM converged reliably for all
+users. Sequences are short and we work in log space, so numerical issues were
+minimal. Both training and inference scale roughly as
+$\mathcal{O}(K^2 T)$ per sequence, and with $K=4$ and $T=31$ this cost is
+negligible, suggesting that the approach is computationally compatible with
+real-time authentication.
+
+The limiting factor is not computation but data. Each user contributes only a
+few hundred repetitions of a single password, which is barely enough to
+estimate transition and emission probabilities for even a small HMM. The
+log-likelihood margins in Figure~\ref{fig:loglik-margins} suggest that many
+errors stem from genuine ambiguity rather than clear model failures: with more
+diverse data (e.g., free-text typing and more sessions per user), higher-capacity
+models or richer features might separate users more cleanly.
+
+
+\subsection{Limitations and Alternative Explanations}
+
+However, our approach is limited in several important ways. We train one independent HMM per user on a single fixed password, which simplifies the problem and does not capture free-text typing. As a result, the model only sees a very narrow slice of each user's behavior and cannot exploit richer language or context dependent patterns. With more diverse data and longer sequences, an HMM could potentially be used for user authentication on generalized free text typing rather than a fixed prompt. In addition, we rely on a discretized/binned timing values which discards fine grained timing information and may underfit the true complexity of human typing dynamics. Finally, although our model far outperformed a random guess, its real world application is questionable with an accuracy of $57.6\%$ in the 51 user setting.  Other classification models that make use of logistic regression or deep learning would likely perform better at this task, especially if trained on richer features.
+
+There are also alternative explanations for our results. One possibility is that our discretization scheme and choice of $K$ and $m$ are suboptimal, and that a different representation (e.g., per-feature binning) would yield more separable likelihoods across users. Another is that the Baum Welch EM algorithm is getting stuck in local optima for some users due to limited data, so part of the observed error may be an optimization issue rather than a fundamental limit of keystroke dynamics. More broadly, it would be valuable to move from single password experiments such as this one to free text typing and study how user specific structure varies across content, devices, and sessions. In spite of these limitations, we believe that integrating keystroke based HMMs with other behavioral or contextual signals (e.g., login history, device fingerprints, or mouse dynamics) could yield a more reliable and continuous authentication system suitable for real world security.
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Conclusion}
@@ -375,14 +368,11 @@ Training generally converges in \dots iterations. We find that:
 % - Summarize key findings and model performance.
 % - Tie back to original problem and hypotheses.
 % - Briefly describe limitations and natural extensions.
-In this project, we studied \dots
-Our main findings are:
-\begin{itemize}[leftmargin=*]
-    \item \dots
-    \item \dots
-\end{itemize}
-However, our approach is limited by \dots
-Future work could explore \dots
+In this project, we investigated whether keystroke dynamics for a single fixed password contain enough behavioral structure to support user identification. By training one discrete Hidden Markov Model per user and evaluating the likelihood of each keystroke sequence under every user’s model, we showed that even a relatively simple probabilistic model can extract meaningful aspects of an individual’s typing rhythm. The learned latent states correspond to “typing modes” and recur across repetitions for the same user, indicating that users exhibit reproducible micro-patterns in their keystroke timing.
+
+Our results, however, also reveal limitations. Identification accuracy drops as the number of users increases, and the log-likelihood margins show that many sequences remain ambiguous (explained nearly equally well by multiple users’ models). We also find that performance is highly sensitive to design choices such as the number of hidden states and discretization bins: small to moderate settings achieve the best balance between expressiveness and overfitting, while larger models tend to become numerically unstable and fail to improve accuracy. Combined with the information loss introduced by discretizing continuous timing values, these factors constrain the reliability of the HMM in the 51 user setting.
+
+Overall, our findings suggest that while HMM-based keystroke modeling is a promising component of behavioral authentication, it is insufficient on its own for robust multi-user identification. Extending this framework to richer data, such as free text typing, longer sequences, or additional behavioral aspects and exploring more expressive sequence models could lead to more reliable identification among users. Our results illustrate that typing behaviors do contain distinctive structure, but unlocking their full potential for security will require both richer datasets and more flexible models.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Reflections \& Contributions}
@@ -390,64 +380,171 @@ Future work could explore \dots
 
 \subsection{Advice for Future Students}
 % - Practical tips, pitfalls, what you wish you'd known earlier.
-Students attempting similar projects may benefit from:
-\begin{itemize}[leftmargin=*]
-    \item Starting with a very simple baseline model to debug the pipeline.
-    \item Visualizing intermediate quantities (e.g., responsibilities, posteriors) to catch bugs.
-    \item Keeping careful track of data splits and random seeds.
-\end{itemize}
+Much better results could be achieved with traditional classification models such as linear regression, or perhaps with a deep learning model. Overall, our main takeaway is that sequence models like HMMs are interesting and conceptually aligned with keystroke dynamics, but they are not automatically the best-performing choice on this dataset. Future students should be prepared to iterate on both the model class and the feature representation, and to honestly report when a simpler approach outperforms the more sophisticated one.
 
-\subsection{Team Contributions}
+\subsection{Team Contributions and Reflections}
 % - For each team member, 1–2 sentence summary of tasks and contributions.
-\paragraph{Author 1.}
-[1–2 sentences summarizing specific tasks and contributions.]
+\paragraph{Ryan Lindberg}
+I contributed the initial code for the HMM model, the data preprocessing code, figures 1 \& 2, as well as many sections in the report write up. 
 
-\paragraph{Author 2.}
-[1–2 sentences summarizing specific tasks and contributions.]
+\paragraph{Tanner Berman}
+I helped test and tune hyperparameters and co-wrote sections of the report including Modeling and Inference.
 
-\paragraph{Author 3.}
-[1–2 sentences summarizing specific tasks and contributions.]
+\paragraph{Anthony Velikov}
+I expanded evaluation methods to include verification(now scraped for space) and helped write parts of the writeup, including conclusion and results and discussion. 
 
-\subsection{Individual Reflections}
-% - Each member writes a short reflection on what they personally learned.
-\paragraph{Author 1 Reflection.}
-I learned that \dots
+\paragraph{Audrey Meredith} I helped build our final HMM model by experimenting with different hyper-parameters to maximize the accuracy of our HMM model as well as helped write sections of the writeup. 
 
-\paragraph{Author 2 Reflection.}
-I learned that \dots
+\paragraph{Preity Singh}
+I co-wrote sections of the writeup, including the abstraction, motivation and problem statement, project scope and goals, model assumptions and dependencies, and results and discussion.
 
-\paragraph{Author 3 Reflection.}
-I learned that \dots
 
 \subsection{Use of Generative AI}
 % - Brief, honest note on how Gen AI was used (if at all).
-We used generative AI tools for \dots (e.g., code debugging suggestions, LaTeX formatting help),
-but all modeling decisions, experiments, and final text were critically reviewed and finalized by the authors.
+We used generative AI tools for code debugging suggestions and LaTeX formatting help.
+All modeling decisions, experiments, and final text were critically reviewed and finalized by the authors.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section*{References}
-% NeurIPS style allows any consistent reference style. Use BibTeX if possible.
-% The references section does NOT count toward the page limit. :contentReference[oaicite:1]{index=1}
+\bibliographystyle{plainnat}
+\bibliography{references}
 
-\bibliographystyle{plainnat} % or another style, as long as you're consistent
-\bibliography{references}    % expects a references.bib file
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Optional: Appendix (does NOT count towards main page limit)
+% Appendices (do NOT count towards main page limit)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 \appendix
 
-\section{Additional Experimental Details}
-\label{app:exp_details}
-% - Put extended training details, extra tables/figures, and derivations here.
+\section{Additional Modeling Details}
+\label{app:model-details}
 
-\section{Additional Plots and Analyses}
-\label{app:plots}
-% - Extra visualizations that support Section~\ref{sec:results}.
+\subsection{HMM Likelihood and Inference}
+\label{app:inference-details}
 
-% If your instructor wants the NeurIPS-style checklist, you could
-% add a section here and copy the checklist structure, but it's usually
-% not necessary for a class project unless explicitly required.
+Under the first-order Markov and conditional-independence assumptions, the joint distribution over hidden states and observations factorizes as
+\begin{equation}
+\label{eq:hmm-joint}
+\begin{aligned}
+p(o_{1:T}, s_{1:T})
+&= p(S_1 = s_1)\,p(O_1 = o_1 \mid S_1 = s_1)\,\prod_{t=1}^{T-1} p(S_{t+1} = s_{t+1} \mid S_t = s_t)\,p(O_{t+1} = o_{t+1} \mid S_{t+1} = s_{t+1}) \\
+&= \pi_{s_1}\, b_{s_1,o_1} \prod_{t=1}^{T-1} a_{s_t,s_{t+1}}\, b_{s_{t+1},o_{t+1}}.
+\end{aligned}
+\end{equation}
+
+The sequence likelihood is obtained by marginalizing out the latent states:
+\begin{equation}
+\label{eq:hmm-marginal}
+p(o_{1:T}) = \sum_{s_1,\dots,s_T} p(o_{1:T}, s_{1:T}).
+\end{equation}
+
+In practice, we compute this likelihood using the forward algorithm. Define the forward variables
+\begin{equation}
+\alpha_{i t} = P(o_{1:t}, S_t = i), \quad i = 1,\dots,n,\; t = 1,\dots,T.
+\end{equation}
+Satisfy the recursion
+\begin{align}
+\alpha_{i1} &= \pi_i \, b_{i,o_1}, \\
+\alpha_{j,t+1} &= \left( \sum_{i=1}^n \alpha_{i t} \, a_{ij} \right) b_{j,o_{t+1}}, \quad t = 1,\dots,T-1.
+\end{align}
+The likelihood of the observed sequence is then
+\begin{equation}
+p(o_{1:T}) = \sum_{i=1}^n \alpha_{iT}.
+\end{equation}
+
+For posterior inference over the hidden states, we also define backward variables
+\begin{equation}
+\beta_{it} = P(o_{t+1:T} \mid S_t = i), \quad i = 1,\dots,n,\; t = 1,\dots,T,
+\end{equation}
+which satisfy the standard backward recursion. Combining $\alpha_{it}$ and $\beta_{it}$ yields smoothed
+state posteriors $P(S_t = i \mid o_{1:T}) \propto \alpha_{it}\beta_{it}$ 
+
+\subsection{EM Learning / Parameter Estimation}
+\label{app:em-details}
+
+For a single user we observe $R$ sequences of discretized keystroke timings:
+\[
+\{\mathbf{o}^{(r)}\}_{r=1}^R, \qquad 
+\mathbf{o}^{(r)} = (o^{(r)}_1,\dots,o^{(r)}_{T_r}).
+\]
+We seek HMM parameters 
+\[
+\theta = (\boldsymbol{\pi}, A, B)
+\]
+that maximize the total log-likelihood:
+\[
+\theta^* = \arg\max_\theta \sum_{r=1}^R \log P(\mathbf{o}^{(r)} \mid \theta).
+\]
+Direct optimization is intractable, so we use the EM algorithm for HMMs
+(the Baum Welch algorithm).
+
+\paragraph{E-step.}
+For each sequence $\mathbf{o}^{(r)}$, we run the forward--backward algorithm to compute:
+\[
+\alpha^{(r)}_{it} = P(o^{(r)}_{1:t},\, S_t = i),
+\qquad
+\beta^{(r)}_{it} = P(o^{(r)}_{t+1:T_r} \mid S_t = i).
+\]
+
+From these we obtain:
+\begin{itemize}[leftmargin=*]
+    \item the posterior probability that the model is in state $i$ at time $t$:
+    \[
+    P(S_t = i \mid \mathbf{o}^{(r)})
+    = 
+    \frac{\alpha^{(r)}_{it}\,\beta^{(r)}_{it}}
+         {\sum_{j} \alpha^{(r)}_{jt}\,\beta^{(r)}_{jt}}.
+    \]
+    
+    \item and the posterior probability of making a transition $i \to j$ at time $t$:
+    \[
+    P(S_t = i, S_{t+1} = j \mid \mathbf{o}^{(r)})
+    \propto 
+    \alpha^{(r)}_{it}\, a_{ij}\, b_{j}(o^{(r)}_{t+1})\, \beta^{(r)}_{j,t+1}.
+    \]
+\end{itemize}
+
+These posteriors serve as the “expected counts’’ of state occupancies
+and transitions under the current parameters.
+
+\paragraph{M-step.}
+We update the parameters by normalizing these expected counts:
+\[
+\pi_i \leftarrow \frac{1}{R}
+\sum_{r=1}^R P(S^{(r)}_1 = i \mid \mathbf{o}^{(r)}),
+\]
+\[
+a_{ij} \leftarrow
+\frac{\sum_{r=1}^R \sum_{t=1}^{T_r-1} 
+        P(S_t = i, S_{t+1} = j \mid \mathbf{o}^{(r)})}
+     {\sum_{r=1}^R \sum_{t=1}^{T_r-1} 
+        P(S_t = i \mid \mathbf{o}^{(r)})},
+\]
+\[
+b_{ik} \leftarrow
+\frac{\sum_{r=1}^R \sum_{t=1}^{T_r} 
+        \mathbf{1}\{o^{(r)}_t = k\}\, P(S_t = i \mid \mathbf{o}^{(r)})}
+     {\sum_{r=1}^R \sum_{t=1}^{T_r} 
+        P(S_t = i \mid \mathbf{o}^{(r)})}.
+\]
+
+These E--M steps repeat until convergence.  
+In our implementation, we rely on the \texttt{MultinomialHMM} class from the
+\texttt{hmmlearn} \citep{hmmlearn}
+ library to carry out these Baum Welch updates numerically
+for each user-specific model. 
+
+\subsection{Evaluation Results Figure}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.7\linewidth]{loglik_margin_hist.pdf}
+    \caption{Distribution of per-repetition log-likelihood margins on the
+    51-user test set, where each margin is the difference between the true
+    user's HMM log-likelihood and the highest impostor log-likelihood for a
+    given password repetition. The bulk of the mass is concentrated near zero,
+    indicating that for many repetitions the true and impostor models assign
+    very similar probabilities, which aligns with the moderate overall
+    identification accuracy.}
+    \label{fig:loglik-margins}
+\end{figure}
 
 \end{document}
